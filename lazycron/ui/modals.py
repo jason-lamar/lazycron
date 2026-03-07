@@ -717,14 +717,14 @@ def _run_form(win, form: _FormState, title: str,
             ch = chr(key)
             # Detect paste burst: drain all immediately-available chars
             pasted = _drain_paste(win, ch)
-            if len(pasted) > 1 and show_command:
-                # Multi-char burst = paste — redirect to command field
-                if form.active < CMD_FIELD:
-                    form.active = CMD_FIELD
+            if len(pasted) > 1 and show_command and form.active < NAME_FIELD:
+                # Multi-char burst on a cron field = paste — redirect to command
+                form.active = CMD_FIELD
                 for c in pasted:
                     form.type_char(c)
             else:
-                form.type_char(ch)
+                for c in pasted:
+                    form.type_char(c)
 
 
 # ── Public modals ───────────────────────────────────────────────────────────
