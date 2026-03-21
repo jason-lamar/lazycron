@@ -67,5 +67,5 @@ def draw_statusbar(scr, store: Store) -> None:
             _put(scr, bar_y, x, "Press d again to confirm delete",
                  curses.color_pair(C_RED) | curses.A_BOLD)
         else:
-            hints = "q:Quit j/k:Nav Space:Toggle e:Edit n:New d:Del s:Save u:Undo ?:Help"
+            hints = "q:Quit j/k:Nav Space:Toggle e:Edit n:New d:Del R:Run s:Save u:Undo ?:Help"
             _put(scr, bar_y, x, hints[:mx - x - 1], attr)

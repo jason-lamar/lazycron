@@ -33,7 +33,8 @@ class Job:
         if self.comment and self.comment.strip():
             name = self.comment.strip()
         else:
-            cmd = self.command.strip()
+            from lazycron.wrapper import display_command
+            cmd = display_command(self.command).strip()
             # Use the last path component or first word
             if "/" in cmd:
                 parts = cmd.split()
@@ -44,6 +45,12 @@ class Job:
         if len(name) > 30:
             name = name[:27] + "..."
         return name
+
+    @property
+    def display_cmd(self) -> str:
+        """Command as displayed in the UI (unwrapped if needed)."""
+        from lazycron.wrapper import display_command
+        return display_command(self.command)
 
 
 @dataclass

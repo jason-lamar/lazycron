@@ -7,9 +7,12 @@ and action logging.
 from __future__ import annotations
 
 import copy
+import json
+import os
 import time
 from dataclasses import dataclass, field
 from enum import Enum, auto
+from pathlib import Path
 from typing import Any, Optional
 
 from lazycron.crontab import (
@@ -33,9 +36,10 @@ class Action(Enum):
 
 @dataclass
 class LogEntry:
-    """Entry in the command log."""
+    """Entry in the unified log."""
     timestamp: float
     message: str
+    success: Optional[bool] = None  # None=info, True=success, False=failure
 
     @property
     def time_str(self) -> str:
@@ -52,7 +56,10 @@ class Snapshot:
 
 
 MAX_UNDO = 50
-PANEL_COUNT = 5
+PANEL_COUNT = 3
+LOG_DIR = Path.home() / ".lazycron"
+LOG_FILE = LOG_DIR / "history.jsonl"
+MAX_LOG_ENTRIES = 200
 
 
 class Store:
@@ -65,9 +72,9 @@ class Store:
         self.dirty: bool = False
         self.undo_stack: list[Snapshot] = []
         self.redo_stack: list[Snapshot] = []
-        self.action_log: list[LogEntry] = []
+        self.action_log: list[LogEntry] = _load_log()
         self.filter_text: str = ""
-        self.focused_panel: int = 0  # 0=jobs, 1=detail, 2=history, 3=env, 4=cmdlog
+        self.focused_panel: int = 0  # 0=jobs, 1=detail, 2=log
         self.delete_pending: Optional[float] = None  # Timestamp of first 'd' press
         self.message: str = ""  # Transient status message
         self.message_time: float = 0.0
@@ -103,8 +110,10 @@ class Store:
             self.undo_stack.pop(0)
         self.redo_stack.clear()
 
-    def _log(self, msg: str) -> None:
-        self.action_log.append(LogEntry(timestamp=time.time(), message=msg))
+    def _log(self, msg: str, success: Optional[bool] = None) -> None:
+        entry = LogEntry(timestamp=time.time(), message=msg, success=success)
+        self.action_log.append(entry)
+        _persist_entry(entry)
 
     def _set_message(self, msg: str) -> None:
         self.message = msg
@@ -198,7 +207,13 @@ class Store:
         self._set_message("New job created")
 
     def _do_save(self) -> None:
-        from lazycron.crontab import save_system_crontab
+        from lazycron.crontab import save_system_crontab, update_job
+        from lazycron.wrapper import wrap_command, is_wrapped
+        # Auto-wrap commands with the logging wrapper before saving
+        for job in self.crontab.jobs:
+            if job.enabled and not is_wrapped(job.command):
+                wrapped = wrap_command(job.display_name, job.command)
+                update_job(self.crontab, job, job.schedule.raw, wrapped, job.comment)
         err = save_system_crontab(self.crontab)
         if err:
             self._log(f"Save FAILED: {err}")
@@ -264,3 +279,55 @@ class Store:
         self._log("Redo")
         self._set_message("Redone")
         return True
+
+
+def _persist_entry(entry: LogEntry) -> None:
+    """Append a log entry to the persistent history file."""
+    try:
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        with open(LOG_FILE, "a") as f:
+            json.dump({
+                "ts": entry.timestamp,
+                "msg": entry.message,
+                "ok": entry.success,
+            }, f)
+            f.write("\n")
+    except OSError:
+        pass
+
+
+def _load_log() -> list[LogEntry]:
+    """Load log entries from the persistent history file."""
+    entries: list[LogEntry] = []
+    try:
+        if not LOG_FILE.exists():
+            return entries
+        with open(LOG_FILE) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    d = json.loads(line)
+                    entries.append(LogEntry(
+                        timestamp=d["ts"],
+                        message=d["msg"],
+                        success=d.get("ok"),
+                    ))
+                except (json.JSONDecodeError, KeyError):
+                    continue
+        # Keep only recent entries
+        if len(entries) > MAX_LOG_ENTRIES:
+            entries = entries[-MAX_LOG_ENTRIES:]
+            # Truncate the file too
+            try:
+                LOG_DIR.mkdir(parents=True, exist_ok=True)
+                with open(LOG_FILE, "w") as f:
+                    for e in entries:
+                        json.dump({"ts": e.timestamp, "msg": e.message, "ok": e.success}, f)
+                        f.write("\n")
+            except OSError:
+                pass
+    except OSError:
+        pass
+    return entries

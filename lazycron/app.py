@@ -12,25 +12,23 @@ import time
 
 from lazycron.crontab import load_system_crontab
 from lazycron.executor import run_command
-from lazycron.logs import get_cron_logs, get_job_history, ExecutionRecord
 from lazycron.state import Action, Store
+from lazycron.wrapper import ensure_wrapper
 from lazycron.ui.layout import compute_geometry, draw_borders, _put, PanelGeometry
 from lazycron.ui.modals import (
-    show_edit_modal, show_help_modal, show_log_modal,
+    show_edit_modal, show_help_modal,
     show_new_job_modal, show_quit_confirm, show_run_output_modal,
     show_search_modal,
 )
 from lazycron.ui.cronbuilder import show_cron_builder
 from lazycron.ui.panels import (
-    draw_cmdlog_panel, draw_detail_panel, draw_env_panel,
-    draw_history_panel, draw_jobs_panel,
+    draw_detail_panel, draw_jobs_panel, draw_log_panel,
 )
 from lazycron.ui.splash import show_splash
 from lazycron.ui.statusbar import draw_statusbar
 from lazycron.ui.theme import C_DIM, C_RED, MIN_H, MIN_W, init_colors
 
 POLL_MS = 100
-LOG_REFRESH_INTERVAL = 30.0  # Refresh cron logs every 30s
 
 
 def _run(scr) -> None:
@@ -41,6 +39,9 @@ def _run(scr) -> None:
     init_colors()
     show_splash(scr)
 
+    # Ensure wrapper script exists
+    ensure_wrapper()
+
     # Load crontab
     ct, err = load_system_crontab()
     if ct is None:
@@ -48,15 +49,8 @@ def _run(scr) -> None:
         return
 
     store = Store(ct)
-    store._log("LazyCron started")
-
-    # History cache
-    history: list[ExecutionRecord] = []
-    last_log_refresh = 0.0
 
     while True:
-        now = time.monotonic()
-
         # -- Input -----------------------------------------------------------
         try:
             key = scr.getch()
@@ -69,15 +63,6 @@ def _run(scr) -> None:
                 break
             elif handled == "redraw":
                 scr.clear()
-
-        # -- Update history periodically -------------------------------------
-        if now - last_log_refresh > LOG_REFRESH_INTERVAL:
-            job = store.selected_job
-            if job:
-                history = get_job_history(job.command)
-            else:
-                history = []
-            last_log_refresh = now
 
         # -- Render ----------------------------------------------------------
         try:
@@ -102,9 +87,7 @@ def _run(scr) -> None:
             # Draw panel contents
             draw_jobs_panel(scr, geo, store)
             draw_detail_panel(scr, geo, store)
-            draw_history_panel(scr, geo, store, history)
-            draw_env_panel(scr, geo, store)
-            draw_cmdlog_panel(scr, geo, store)
+            draw_log_panel(scr, geo, store)
             draw_statusbar(scr, store)
 
             scr.refresh()
@@ -163,11 +146,8 @@ def _handle_key(scr, key: int, store: Store) -> str | None:
     elif key == ord("/"):
         _handle_search(scr, store)
         return "redraw"
-    elif key == ord("r"):
+    elif key == ord("R"):  # Shift+R = run now
         _handle_run_now(scr, store)
-        return "redraw"
-    elif key == ord("L"):
-        _handle_log_view(scr)
         return "redraw"
     elif key == ord("?"):
         show_help_modal(scr)
@@ -197,7 +177,7 @@ def _handle_edit(scr, store: Store) -> None:
     result = show_edit_modal(
         scr,
         schedule=job.schedule.raw,
-        command=job.command,
+        command=job.display_cmd,
         comment=job.comment,
     )
     if result:
@@ -215,7 +195,7 @@ def _handle_builder(scr, store: Store) -> None:
     """Open the visual cron builder for the selected job."""
     job = store.selected_job
     initial = job.schedule.raw if job else "* * * * *"
-    command = job.command if job else ""
+    command = job.display_cmd if job else ""
 
     result = show_cron_builder(scr, initial=initial, command=command)
     if result and job:
@@ -244,19 +224,32 @@ def _handle_run_now(scr, store: Store) -> None:
     store._log(f"Running: {job.display_name}")
     store._set_message(f"Running {job.display_name}...")
 
+    # Force screen refresh so the user sees "Running..." before we block
+    my, mx = scr.getmaxyx()
+    geo = compute_geometry(my, mx)
+    _clear_panels(scr, geo)
+    draw_borders(scr, geo, store.focused_panel)
+    draw_jobs_panel(scr, geo, store)
+    draw_detail_panel(scr, geo, store)
+    draw_log_panel(scr, geo, store)
+    draw_statusbar(scr, store)
+    scr.refresh()
+
     # Build env vars from crontab
     env = {ev.key: ev.value for ev in store.crontab.env_vars}
 
     result = run_command(job.command, env_vars=env)
-    store._log(f"Finished: {job.display_name} (exit {result.exit_code})")
+    ok = result.exit_code == 0
+    if result.timed_out:
+        msg = f"{job.display_name} — timed out"
+    elif ok:
+        msg = f"{job.display_name} — success"
+    else:
+        msg = f"{job.display_name} — failed (exit {result.exit_code})"
+    store._log(msg, success=ok)
 
-    show_run_output_modal(scr, job.command, result.output, result.exit_code)
+    show_run_output_modal(scr, job.display_cmd, result.output, result.exit_code)
 
-
-def _handle_log_view(scr) -> None:
-    """Open the log view modal."""
-    log_lines = get_cron_logs(100)
-    show_log_modal(scr, log_lines)
 
 
 def _show_error(scr, message: str) -> None:

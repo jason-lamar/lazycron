@@ -12,8 +12,7 @@ from datetime import datetime
 from typing import Optional
 
 from lazycron.cron import DOW_LABELS, MONTH_LABELS
-from lazycron.crontab import Job, EnvVar
-from lazycron.logs import ExecutionRecord
+from lazycron.crontab import Job
 from lazycron.state import Store
 from lazycron.ui.layout import PanelGeometry, _put
 from lazycron.ui.theme import (
@@ -29,9 +28,9 @@ def draw_jobs_panel(scr, geo: PanelGeometry, store: Store) -> None:
     """Render the jobs list in the left panel."""
     # Content area: inside borders
     x_start = 1
-    y_start = 1
+    y_start = 2  # Gap below panel title
     avail_w = geo.jobs_w - 2  # Border on each side
-    avail_h = geo.jobs_h - 1  # Top border
+    avail_h = geo.jobs_h - 2  # Top border + title gap
 
     jobs = store.jobs
     if not jobs:
@@ -60,13 +59,23 @@ def draw_jobs_panel(scr, geo: PanelGeometry, store: Store) -> None:
         # Build display line
         indicator = IND_ACTIVE if job.enabled else IND_DISABLED
         name = job.display_name
+
+        # Last run status indicator
+        from lazycron.wrapper import get_last_run
+        last = get_last_run(job.display_name)
+        if last is not None:
+            run_ind = f" {IND_SUCCESS}" if last.success else f" {IND_FAILURE}"
+        else:
+            run_ind = ""
+
         # Truncate to fit
-        max_name = avail_w - 3  # indicator + space + padding
+        max_name = avail_w - 3 - len(run_ind)  # indicator + space + padding + run status
         if len(name) > max_name:
             name = name[:max_name - 3] + "..."
 
         line = f" {indicator} {name}"
-        line = line.ljust(avail_w)
+        line = line.ljust(avail_w - len(run_ind)) + run_ind
+        line = line[:avail_w]
 
         if is_selected:
             attr = curses.color_pair(C_SELECTED) | curses.A_BOLD
@@ -194,12 +203,7 @@ def _draw_cron_table(scr, row: int, x: int, avail_w: int, job) -> int:
     _put(scr, row, x, bot, ba)
     row += 1
 
-    # -- Human-readable description below the table
-    desc = job.schedule.describe()
-    if len(desc) > avail_w:
-        desc = desc[:avail_w - 3] + "..."
-    _put(scr, row, x, desc, desc_a)
-    row += 1
+    # Description moved to draw_detail_panel (rendered above the table)
 
     return row
 
@@ -214,7 +218,8 @@ def draw_detail_panel(scr, geo: PanelGeometry, store: Store) -> None:
     x_start = geo.detail_x + 1
     y_start = 1
     avail_w = geo.detail_w - 2
-    avail_h = geo.detail_h - 1
+    pad = 2  # Right margin inside the panel
+    content_w = avail_w - pad
 
     job = store.selected_job
     if not job:
@@ -222,43 +227,39 @@ def draw_detail_panel(scr, geo: PanelGeometry, store: Store) -> None:
              curses.color_pair(C_DIM) | curses.A_DIM)
         return
 
-    la = curses.color_pair(C_CYAN) | curses.A_BOLD  # Label attribute
-    va = curses.A_NORMAL  # Value attribute
+    la = curses.color_pair(C_CYAN) | curses.A_BOLD    # Label
+    va = curses.A_NORMAL                                # Value
+    desc_a = curses.color_pair(C_MAGENTA)               # Schedule description
 
-    row = y_start
+    row = y_start + 1  # Gap below panel title
 
-    # Schedule — visual cron field table
-    row = _draw_cron_table(scr, row, x_start + 1, avail_w - 2, job)
-    row += 1  # Blank line
+    # ── Schedule description (pink, above the table) ──
+    try:
+        tz = time.tzname[0]
+    except (IndexError, AttributeError):
+        tz = "UTC"
+    desc = f"{job.schedule.describe()}, {tz}"
+    if len(desc) > content_w - 2:
+        desc = desc[:content_w - 5] + "..."
+    _put(scr, row, x_start + 1, desc, desc_a)
+    row += 1
 
-    # Command (word-wrapped)
-    _put(scr, row, x_start + 1, "Command:", la)
-    cmd = job.command
-    cmd_indent = 12  # Aligns with other values
-    cmd_w = avail_w - cmd_indent - 1
-    if cmd_w > 0:
-        # First line after label
-        _put(scr, row, x_start + cmd_indent, cmd[:cmd_w], va)
-        row += 1
-        # Continuation lines
-        pos = cmd_w
-        while pos < len(cmd):
-            chunk = cmd[pos:pos + cmd_w]
-            _put(scr, row, x_start + cmd_indent, chunk, va)
-            row += 1
-            pos += cmd_w
+    # ── Cron field table ──
+    row = _draw_cron_table(scr, row, x_start + 1, content_w, job)
+
+    # ── Status block (compact: status + timezone on same visual group) ──
+    col_val = x_start + 12  # Align all values
+
+    _put(scr, row, x_start + 1, "Status:", la)
+    if job.enabled:
+        _put(scr, row, col_val, "Active",
+             curses.color_pair(C_GREEN) | curses.A_BOLD)
     else:
-        row += 1
+        _put(scr, row, col_val, "Disabled",
+             curses.color_pair(C_RED) | curses.A_DIM)
+    row += 1
 
-    # Name (stored as crontab comment)
-    if job.comment:
-        _put(scr, row, x_start + 1, "Name:", la)
-        _put(scr, row, x_start + 12, job.comment[:avail_w - 13], va)
-        row += 1
-
-    row += 1  # Blank line
-
-    # Next run
+    # ── Timing block ──
     valid, _ = job.schedule.validate()
     if valid:
         nxt = job.schedule.next_run()
@@ -274,38 +275,63 @@ def draw_detail_panel(scr, geo: PanelGeometry, store: Store) -> None:
             else:
                 rel = f"in {mins // 1440}d"
             nxt_str = nxt.strftime("%a %H:%M")
-            _put(scr, row, x_start + 12, f"{nxt_str} ({rel})", va)
+            _put(scr, row, col_val, f"{nxt_str} ({rel})", va)
             row += 1
 
-    # Status
-    _put(scr, row, x_start + 1, "Status:", la)
-    if job.enabled:
-        _put(scr, row, x_start + 12, "Active",
-             curses.color_pair(C_GREEN) | curses.A_BOLD)
+    # Last Run
+    from lazycron.wrapper import get_last_run
+    last = get_last_run(job.display_name)
+    _put(scr, row, x_start + 1, "Last Run:", la)
+    if last:
+        dt = datetime.fromtimestamp(last.timestamp)
+        rel_str = dt.strftime("%a %b %d %H:%M")
+        if last.success:
+            _put(scr, row, col_val, f"{rel_str} — success",
+                 curses.color_pair(C_GREEN) | curses.A_BOLD)
+        else:
+            _put(scr, row, col_val, f"{rel_str} — failed",
+                 curses.color_pair(C_RED) | curses.A_BOLD)
     else:
-        _put(scr, row, x_start + 12, "Disabled",
-             curses.color_pair(C_RED) | curses.A_DIM)
+        _put(scr, row, col_val, "never",
+             curses.color_pair(C_DIM) | curses.A_DIM)
     row += 1
 
-    # Timezone
-    try:
-        tz = time.tzname[0]
-    except (IndexError, AttributeError):
-        tz = "UTC"
-    _put(scr, row, x_start + 1, "Timezone:", la)
-    _put(scr, row, x_start + 12, tz, va)
+    row += 1  # Visual separator
 
-    # Collision detection
+    # ── Command block ──
+    cmd_w = content_w - 12  # 12 = label indent
+
+    # Name (crontab comment) — above command
+    if job.comment:
+        _put(scr, row, x_start + 1, "Name:", la)
+        _put(scr, row, col_val, job.comment[:cmd_w], va)
+        row += 1
+
+    _put(scr, row, x_start + 1, "Command:", la)
+    cmd = job.display_cmd
+    if cmd_w > 0:
+        _put(scr, row, col_val, cmd[:cmd_w], va)
+        row += 1
+        pos = cmd_w
+        while pos < len(cmd):
+            chunk = cmd[pos:pos + cmd_w]
+            _put(scr, row, col_val, chunk, va)
+            row += 1
+            pos += cmd_w
+    else:
+        row += 1
+
+    # ── Collision warnings ──
     if valid and job.enabled:
-        row += 2
         collisions = _detect_collisions(store, job)
         if collisions:
+            row += 1
             _put(scr, row, x_start + 1, "Collisions:",
                  curses.color_pair(C_YELLOW) | curses.A_BOLD)
             row += 1
             for col_msg in collisions[:3]:
                 _put(scr, row, x_start + 3,
-                     f"! {col_msg}"[:avail_w - 4],
+                     f"! {col_msg}"[:content_w - 4],
                      curses.color_pair(C_YELLOW))
                 row += 1
 
@@ -334,63 +360,16 @@ def _detect_collisions(store: Store, job: Job) -> list[str]:
     return collisions
 
 
-def draw_history_panel(scr, geo: PanelGeometry, store: Store,
-                       history: list[ExecutionRecord]) -> None:
-    """Render execution history in the bottom-left panel."""
-    x_start = geo.history_x + 1
-    y_start = geo.history_y + 1
-    avail_w = geo.history_w - 2
-    avail_h = geo.bottom_h - 2
-
-    if not history:
-        _put(scr, y_start, x_start + 1, "No history",
-             curses.color_pair(C_DIM) | curses.A_DIM)
-        return
-
-    for i, rec in enumerate(history[:avail_h]):
-        y = y_start + i
-        if rec.success:
-            ind = IND_SUCCESS
-            attr = curses.color_pair(C_GREEN)
-        else:
-            ind = IND_FAILURE
-            attr = curses.color_pair(C_RED)
-
-        line = f"{rec.time_str} {ind} exit {rec.exit_code}"
-        _put(scr, y, x_start + 1, line[:avail_w - 2], attr)
-
-
-def draw_env_panel(scr, geo: PanelGeometry, store: Store) -> None:
-    """Render environment variables in the bottom-center panel."""
-    x_start = geo.env_x + 1
-    y_start = geo.env_y + 1
-    avail_w = geo.env_w - 2
-    avail_h = geo.bottom_h - 2
-
-    env_vars = store.crontab.env_vars
-    if not env_vars:
-        _put(scr, y_start, x_start + 1, "No env vars",
-             curses.color_pair(C_DIM) | curses.A_DIM)
-        return
-
-    for i, ev in enumerate(env_vars[:avail_h]):
-        y = y_start + i
-        line = f"{ev.key}={ev.value}"
-        if len(line) > avail_w - 2:
-            line = line[:avail_w - 5] + "..."
-        _put(scr, y, x_start + 1, line, curses.A_NORMAL)
-
-
-def draw_cmdlog_panel(scr, geo: PanelGeometry, store: Store) -> None:
-    """Render the command log in the bottom-right panel."""
-    x_start = geo.cmdlog_x + 1
-    y_start = geo.cmdlog_y + 1
-    avail_w = geo.cmdlog_w - 2
+def draw_log_panel(scr, geo: PanelGeometry, store: Store) -> None:
+    """Render the unified log in the full-width bottom panel."""
+    x_start = geo.log_x + 1
+    y_start = geo.log_y + 1
+    avail_w = geo.log_w - 2
     avail_h = geo.bottom_h - 2
 
     entries = store.action_log
     if not entries:
-        _put(scr, y_start, x_start + 1, "No actions yet",
+        _put(scr, y_start, x_start + 1, "No activity yet",
              curses.color_pair(C_DIM) | curses.A_DIM)
         return
 
@@ -398,7 +377,18 @@ def draw_cmdlog_panel(scr, geo: PanelGeometry, store: Store) -> None:
     visible = entries[-avail_h:] if len(entries) > avail_h else entries
     for i, entry in enumerate(visible):
         y = y_start + i
-        line = f"{entry.message}"
+
+        if entry.success is True:
+            ind = IND_SUCCESS
+            attr = curses.color_pair(C_GREEN)
+        elif entry.success is False:
+            ind = IND_FAILURE
+            attr = curses.color_pair(C_RED)
+        else:
+            ind = "·"
+            attr = curses.color_pair(C_DIM)
+
+        line = f"{entry.time_str}  {ind}  {entry.message}"
         if len(line) > avail_w - 2:
             line = line[:avail_w - 5] + "..."
-        _put(scr, y, x_start + 1, line, curses.color_pair(C_DIM))
+        _put(scr, y, x_start + 1, line, attr)

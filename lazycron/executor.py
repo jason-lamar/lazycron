@@ -10,7 +10,7 @@ import os
 import subprocess
 from dataclasses import dataclass
 
-DEFAULT_TIMEOUT = 30  # seconds
+DEFAULT_TIMEOUT = 600  # 10 minutes
 
 
 @dataclass

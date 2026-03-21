@@ -717,14 +717,14 @@ def _run_form(win, form: _FormState, title: str,
             ch = chr(key)
             # Detect paste burst: drain all immediately-available chars
             pasted = _drain_paste(win, ch)
-            if len(pasted) > 1 and show_command and form.active < NAME_FIELD:
-                # Multi-char burst on a cron field = paste — redirect to command
-                form.active = CMD_FIELD
+            if len(pasted) > 1 and show_command:
+                # Multi-char burst = paste — redirect to command field
+                if form.active < CMD_FIELD:
+                    form.active = CMD_FIELD
                 for c in pasted:
                     form.type_char(c)
             else:
-                for c in pasted:
-                    form.type_char(c)
+                form.type_char(ch)
 
 
 # ── Public modals ───────────────────────────────────────────────────────────
@@ -822,13 +822,13 @@ def show_help_modal(scr) -> None:
         ("e", "Edit selected job"),
         ("n", "New job wizard"),
         ("d", "Delete (press again to confirm)"),
-        ("r", "Run Now (execute immediately)"),
+        ("R", "Run Now (Shift+R, execute immediately)"),
         ("s", "Save changes to crontab"),
         ("u", "Undo last action"),
         ("Ctrl+R", "Redo"),
         ("/", "Search/filter jobs"),
+        ("b", "Visual cron builder"),
         ("Tab", "Cycle panel focus"),
-        ("L", "Log view (tail cron logs)"),
         ("?", "This help screen"),
         ("q", "Quit (prompts if dirty)"),
     ]
@@ -906,18 +906,20 @@ def show_run_output_modal(scr, command: str, output: str,
     win.getch()
 
 
-def show_log_modal(scr, log_lines: list[str]) -> None:
-    """Show cron log output in a scrollable modal."""
-    width = min(80, curses.COLS - 4)
+def show_log_modal(scr, entries) -> None:
+    """Show action log in a scrollable modal with success/failure indicators."""
+    from lazycron.ui.theme import IND_SUCCESS, IND_FAILURE
+
+    width = min(100, curses.COLS - 4)
     height = min(curses.LINES - 4, 30)
     win = _center_win(scr, height, width)
     if not win:
         return
 
-    _draw_modal_frame(win, "Cron Logs")
+    _draw_modal_frame(win, "Activity Log")
 
-    if not log_lines:
-        _put(win, 2, 2, "No cron log entries found.",
+    if not entries:
+        _put(win, 2, 2, "No activity yet.",
              curses.color_pair(C_DIM) | curses.A_DIM)
         _put(win, height - 2, 2, "Press any key to close",
              curses.color_pair(C_DIM) | curses.A_DIM)
@@ -926,18 +928,31 @@ def show_log_modal(scr, log_lines: list[str]) -> None:
         return
 
     avail_h = height - 4
-    scroll = max(0, len(log_lines) - avail_h)
+    avail_w = width - 4
+    scroll = max(0, len(entries) - avail_h)
 
     while True:
         for i in range(avail_h):
             idx = scroll + i
             y = 2 + i
-            if idx < len(log_lines):
-                _put(win, y, 2, log_lines[idx][:width - 4], curses.A_NORMAL)
+            if idx < len(entries):
+                entry = entries[idx]
+                if entry.success is True:
+                    ind = IND_SUCCESS
+                    attr = curses.color_pair(C_GREEN)
+                elif entry.success is False:
+                    ind = IND_FAILURE
+                    attr = curses.color_pair(C_RED)
+                else:
+                    ind = "·"
+                    attr = curses.color_pair(C_DIM)
+                line = f"{entry.time_str}  {ind}  {entry.message}"
+                _put(win, y, 2, " " * avail_w, curses.A_NORMAL)
+                _put(win, y, 2, line[:avail_w], attr)
             else:
-                _put(win, y, 2, " " * (width - 4), curses.A_NORMAL)
+                _put(win, y, 2, " " * avail_w, curses.A_NORMAL)
 
-        pos = f" {scroll + 1}-{min(scroll + avail_h, len(log_lines))}/{len(log_lines)} "
+        pos = f" {scroll + 1}-{min(scroll + avail_h, len(entries))}/{len(entries)} "
         _put(win, height - 2, 2, "j/k:scroll  q:close",
              curses.color_pair(C_DIM))
         _put(win, height - 2, width - len(pos) - 2, pos,
@@ -952,11 +967,11 @@ def show_log_modal(scr, log_lines: list[str]) -> None:
         if key in (ord("q"), 27):
             break
         elif key in (ord("j"), curses.KEY_DOWN):
-            scroll = min(scroll + 1, max(0, len(log_lines) - avail_h))
+            scroll = min(scroll + 1, max(0, len(entries) - avail_h))
         elif key in (ord("k"), curses.KEY_UP):
             scroll = max(0, scroll - 1)
         elif key == ord("G"):
-            scroll = max(0, len(log_lines) - avail_h)
+            scroll = max(0, len(entries) - avail_h)
         elif key == ord("g"):
             scroll = 0
 
