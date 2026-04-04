@@ -117,6 +117,53 @@ The wrapper is transparent — the UI always shows the original unwrapped comman
 - **Dirty indicator** — always know if you have unsaved changes
 - **Quit confirmation** — prompts before discarding changes
 
+## Customization
+
+### Environment Variables (`~/.lazycron/env.sh`)
+
+LazyCron regenerates `~/.lazycron/run.sh` on every save. To persist environment variables across regenerations, create `~/.lazycron/env.sh`:
+
+```bash
+# ~/.lazycron/env.sh — sourced before every job runs
+export REPO_ROOT="$HOME/my-project"
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+This file is sourced by the wrapper if it exists, ignored if it doesn't. Put any env vars your cron jobs need here.
+
+## Troubleshooting
+
+### macOS Provenance (Exit Code 126)
+
+On macOS Sequoia+, files created by sandboxed apps (Claude Code, Zed, Cursor, etc.) get a `com.apple.provenance` extended attribute. This causes cron to reject them with **exit code 126** (permission denied), even if the file has `+x`.
+
+**Check if a script is affected:**
+
+```bash
+xattr your_script.sh
+# If you see "com.apple.provenance", that's the cause
+```
+
+**LazyCron's wrapper is already immune** — it uses `cat | /bin/sh` to pipe the wrapper content rather than executing it directly, bypassing the provenance check.
+
+**For your own scripts** called by cron jobs, use the same pattern:
+
+```bash
+# Instead of:
+/path/to/script.sh
+
+# Use:
+cat /path/to/script.sh | bash
+
+# If your script reads stdin, use process substitution:
+bash <(cat /path/to/script.sh)
+
+# For Python:
+python3 - < /path/to/script.py
+```
+
+This affects any script written by a sandboxed editor on macOS Sequoia or later.
+
 ## Requirements
 
 - Python 3.10+

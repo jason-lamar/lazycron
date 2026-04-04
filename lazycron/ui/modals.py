@@ -880,7 +880,8 @@ def show_run_output_modal(scr, command: str, output: str,
     """Show output from a Run Now command."""
     width = min(76, curses.COLS - 4)
     lines = output.split("\n")
-    height = min(len(lines) + 6, curses.LINES - 4)
+    extra = 1 if exit_code == 126 else 0
+    height = min(len(lines) + 6 + extra, curses.LINES - 4)
     height = max(height, 8)
     win = _center_win(scr, height, width)
     if not win:
@@ -897,8 +898,16 @@ def show_run_output_modal(scr, command: str, output: str,
         ec_attr = curses.color_pair(C_RED)
     _put(win, 3, 2, f"Exit code: {exit_code}", ec_attr)
 
-    for i, line in enumerate(lines[:height - 6]):
-        _put(win, 4 + i, 2, line[:width - 4], curses.A_NORMAL)
+    hint_offset = 0
+    if exit_code == 126:
+        hint = "Hint: may be macOS file provenance. See README."
+        _put(win, 4, 2, hint[:width - 4],
+             curses.color_pair(C_YELLOW) | curses.A_DIM)
+        hint_offset = 1
+
+    for i, line in enumerate(lines[:height - 6 - hint_offset]):
+        _put(win, 4 + hint_offset + i, 2, line[:width - 4],
+             curses.A_NORMAL)
 
     _put(win, height - 2, 2, "Press any key to close",
          curses.color_pair(C_DIM) | curses.A_DIM)

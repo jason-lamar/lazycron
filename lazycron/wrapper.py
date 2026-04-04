@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shlex
 import stat
 from pathlib import Path
 from typing import Optional
@@ -28,6 +27,8 @@ NAME="$1"
 CMD="$2"
 LOG="$HOME/.lazycron/history.jsonl"
 mkdir -p "$(dirname "$LOG")"
+# Source user env if present (survives wrapper regeneration)
+[ -f "$HOME/.lazycron/env.sh" ] && . "$HOME/.lazycron/env.sh"
 /bin/sh -c "$CMD"
 EXIT=$?
 TS=$(python3 -c "import time; print(time.time())" 2>/dev/null || date +%s)
@@ -38,13 +39,7 @@ else
     MSG="$NAME — failed (exit $EXIT)"
     OK=false
 fi
-# Use python3 for safe JSON encoding (handles quotes, backslashes, unicode)
-python3 -c "
-import json, sys
-entry = {'ts': float(sys.argv[1]), 'msg': sys.argv[2], 'ok': sys.argv[3] == 'true'}
-print(json.dumps(entry))
-" "$TS" "$MSG" "$OK" >> "$LOG" 2>/dev/null || \
-    printf '{"ts":%s,"msg":"log-encode-error","ok":null}\n' "$TS" >> "$LOG"
+printf '{"ts":%s,"msg":"%s","ok":%s}\n' "$TS" "$MSG" "$OK" >> "$LOG"
 exit $EXIT
 '''
 
@@ -52,17 +47,19 @@ exit $EXIT
 def ensure_wrapper() -> None:
     """Create the wrapper script if it doesn't exist or is outdated."""
     LAZYCRON_DIR.mkdir(parents=True, exist_ok=True)
-    os.chmod(LAZYCRON_DIR, 0o700)
     # Always update to latest version
     WRAPPER_PATH.write_text(_WRAPPER_SCRIPT)
-    WRAPPER_PATH.chmod(0o700)
+    WRAPPER_PATH.chmod(WRAPPER_PATH.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP)
 
 
 def wrap_command(job_name: str, command: str) -> str:
     """Wrap a command with the logging wrapper."""
     if is_wrapped(command):
         return command
-    return f'{WRAPPER_PATH} {shlex.quote(job_name)} {shlex.quote(command)}'
+    # Escape double quotes in name and command for shell safety
+    safe_name = job_name.replace('"', '\\"')
+    safe_cmd = command.replace('"', '\\"')
+    return f'cat {WRAPPER_PATH} | /bin/sh -s "{safe_name}" "{safe_cmd}"'
 
 
 def unwrap_command(command: str) -> Optional[str]:
@@ -71,22 +68,30 @@ def unwrap_command(command: str) -> Optional[str]:
     Returns the original command, or None if not wrapped.
     """
     wrapper_str = str(WRAPPER_PATH)
-    if not command.strip().startswith(wrapper_str):
-        return None
-    # Use shlex.split for safe parsing of both single- and double-quoted args
-    try:
-        parts = shlex.split(command.strip())
-    except ValueError:
-        return None
-    # parts[0] = wrapper path, parts[1] = name, parts[2] = command
-    if len(parts) >= 3 and parts[0] == wrapper_str:
-        return parts[2]
+    cmd = command.strip()
+    # New format: cat /path/run.sh | /bin/sh -s "name" "command"
+    m = re.match(
+        rf'^cat\s+{re.escape(wrapper_str)}\s*\|\s*/bin/sh\s+-s\s+"[^"]*"\s+"(.*)"$',
+        cmd,
+    )
+    if m:
+        return m.group(1).replace('\\"', '"')
+    # Legacy format: /path/run.sh "name" "command"
+    if cmd.startswith(wrapper_str):
+        m = re.match(
+            rf'^{re.escape(wrapper_str)}\s+"[^"]*"\s+"(.*)"$',
+            cmd,
+        )
+        if m:
+            return m.group(1).replace('\\"', '"')
     return None
 
 
 def is_wrapped(command: str) -> bool:
     """Check if a command is already wrapped."""
-    return command.strip().startswith(str(WRAPPER_PATH))
+    cmd = command.strip()
+    wrapper_str = str(WRAPPER_PATH)
+    return cmd.startswith(f"cat {wrapper_str}") or cmd.startswith(wrapper_str)
 
 
 def display_command(command: str) -> str:
