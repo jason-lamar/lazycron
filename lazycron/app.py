@@ -100,9 +100,9 @@ def _run(scr) -> None:
 
 
 def _clear_panels(scr, geo: PanelGeometry) -> None:
-    """Clear the content areas of all panels."""
-    my, mx = scr.getmaxyx()
-    for y in range(my):
+    """Clear the content areas of all panels (not the status bar)."""
+    bot_end = geo.jobs_h + geo.bottom_h
+    for y in range(bot_end + 1):
         try:
             scr.move(y, 0)
             scr.clrtoeol()
@@ -222,7 +222,6 @@ def _handle_run_now(scr, store: Store) -> None:
         return
 
     store._log(f"Running: {job.display_name}")
-    store._set_message(f"Running {job.display_name}...")
 
     # Force screen refresh so the user sees "Running..." before we block
     my, mx = scr.getmaxyx()

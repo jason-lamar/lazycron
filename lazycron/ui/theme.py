@@ -79,4 +79,4 @@ IND_ARROW_DN = "\u25bc"  # ▼
 JOBS_W = 26       # Fixed width for jobs list panel
 MIN_W = 80        # Minimum terminal width
 MIN_H = 20        # Minimum terminal height
-STATUS_H = 1      # Status bar height
+STATUS_H = 3      # Bottom border + status bar + key hints

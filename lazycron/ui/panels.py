@@ -274,7 +274,7 @@ def draw_detail_panel(scr, geo: PanelGeometry, store: Store) -> None:
                 rel = f"in {mins // 60}h {mins % 60}m"
             else:
                 rel = f"in {mins // 1440}d"
-            nxt_str = nxt.strftime("%a %H:%M")
+            nxt_str = nxt.strftime("%a %b %d %H:%M")
             _put(scr, row, col_val, f"{nxt_str} ({rel})", va)
             row += 1
 

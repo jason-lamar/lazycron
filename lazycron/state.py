@@ -44,7 +44,7 @@ class LogEntry:
     @property
     def time_str(self) -> str:
         t = time.localtime(self.timestamp)
-        return f"{t.tm_hour:02d}:{t.tm_min:02d}:{t.tm_sec:02d}"
+        return f"{t.tm_mon:02d}-{t.tm_mday:02d} {t.tm_hour:02d}:{t.tm_min:02d}:{t.tm_sec:02d}"
 
 
 @dataclass

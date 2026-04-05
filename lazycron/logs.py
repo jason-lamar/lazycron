@@ -30,8 +30,8 @@ class ExecutionRecord:
     @property
     def time_str(self) -> str:
         if self.timestamp:
-            return self.timestamp.strftime("%H:%M")
-        return "??:??"
+            return self.timestamp.strftime("%m-%d %H:%M:%S")
+        return "??-?? ??:??:??"
 
 
 def get_cron_logs(limit: int = 50) -> list[str]:

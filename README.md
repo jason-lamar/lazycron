@@ -31,26 +31,28 @@ A LazyGit-style TUI for managing cron jobs. Navigate, edit, create, and monitor 
 ## Layout
 
 ```
-┌─ Jobs ──────────────┬─ Job Details ──────────────────────────┐
-│ ● health-check   ✓  │ ┌─────┬───────┬───────┬───────┬──────┐ │
-│ ● nightly-backup ✓  │ │ MIN │ HOUR  │  DOM  │  MON  │ DOW  │ │
-│ ○ weekly-report  ✗  │ ├─────┼───────┼───────┼───────┼──────┤ │
-│ ● api-ping       ✓  │ │ */15│ 9-17  │   *   │   *   │  1-5 │ │
-│                     │ │ :15 │ 09:00 │ Every │ Every │  Fri │ │
-│                     │ └─────┴───────┴───────┴───────┴──────┘ │
-│                     │ Every 15 min, 09:00–17:59, Mon–Fri     │
-│                     │                                        │
-│                     │ Command:   /scripts/health-check.sh    │
-│                     │ Next Run:  Mon 09:15 (in 12 min)       │
-│                     │ Last Run:  Mon Mar 20 09:00 — success  │
-│                     │ Status:    Active                      │
-├─ Log ────────────────────────────────────────────────────────┤
-│ 09:00:02  ✓  health-check — success                         │
-│ 08:45:01  ✓  nightly-backup — success                       │
-│ 08:30:00  ✗  weekly-report — failed (exit 1)                │
-├──────────────────────────────────────────────────────────────┤
-│ ◆ modified | CST | q:Quit j/k:Nav Space:Toggle R:Run ?:Help │
-└──────────────────────────────────────────────────────────────┘
+┌─ Jobs ──────────────┬─ Job Details ──────────────────────────────┐
+│ ● health-check   ✓  │ ┌─────┬───────┬───────┬───────┬──────┐     │
+│ ● nightly-backup ✓  │ │ MIN │ HOUR  │  DOM  │  MON  │ DOW  │     │
+│ ○ weekly-report  ✗  │ ├─────┼───────┼───────┼───────┼──────┤     │
+│ ● api-ping       ✓  │ │ */15│ 9-17  │   *   │   *   │  1-5 │     │
+│                     │ │ :15 │ 09:00 │ Every │ Every │  Fri │     │
+│                     │ └─────┴───────┴───────┴───────┴──────┘     │
+│                     │ Every 15 min, 09:00–17:59, Mon–Fri         │
+│                     │                                            │
+│                     │ Status:    Active                          │
+│                     │ Next Run:  Mon Apr 07 09:15 (in 12m)       │
+│                     │ Last Run:  Sun Apr 06 09:00 — success      │
+│                     │                                            │
+│                     │ Name:      health-check                    │
+│                     │ Command:   /scripts/health-check.sh        │
+├─ Log ────────────────────────────────────────────────────────────┤
+│ 04-06 09:00:02  ✓  health-check — success                        │
+│ 04-06 08:45:01  ✓  nightly-backup — success                      │
+│ 04-06 08:30:00  ✗  weekly-report — failed (exit 1)               │
+└──────────────────────────────────────────────────────────────────┘
+  saved   | EST |
+ q:Quit  j/k:Nav  Space:Toggle  e:Edit  n:New  d:Del  R:Run  s:Save
 ```
 
 ## Install

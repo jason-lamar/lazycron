@@ -7,65 +7,45 @@ import time
 
 from lazycron.state import Store
 from lazycron.ui.layout import _put
-from lazycron.ui.theme import (
-    C_GREEN, C_RED, C_STATUS, C_YELLOW,
-    IND_MODIFIED, MIN_W,
-)
+from lazycron.ui.theme import C_STATUS, IND_MODIFIED, MIN_W
 
 # Message display duration in seconds
 MSG_DURATION = 3.0
 
 
 def draw_statusbar(scr, store: Store) -> None:
-    """Render the bottom status bar."""
+    """Render the bottom status bar (2 rows: status + key hints)."""
     my, mx = scr.getmaxyx()
     if mx < MIN_W:
         return
 
-    bar_y = my - 1
+    status_y = my - 2  # Status row (dirty, timezone, messages)
+    hints_y = my - 1   # Key hints row (always visible)
     attr = curses.color_pair(C_STATUS)
 
-    # Clear the bar
-    _put(scr, bar_y, 0, " " * mx, attr)
-
-    x = 1
-
-    # Dirty indicator
+    # -- Status row: build full-width string, write once --
     if store.dirty:
-        _put(scr, bar_y, x, f"{IND_MODIFIED} modified",
-             curses.color_pair(C_YELLOW) | curses.A_BOLD)
-        x += 11
+        dirty_str = f" {IND_MODIFIED} modified"
     else:
-        _put(scr, bar_y, x, "  saved   ",
-             curses.color_pair(C_GREEN))
-        x += 11
+        dirty_str = "  saved   "
 
-    # Separator
-    _put(scr, bar_y, x, " | ", attr)
-    x += 3
-
-    # Timezone
     try:
         tz = time.tzname[0]
     except (IndexError, AttributeError):
         tz = "UTC"
-    _put(scr, bar_y, x, tz, attr)
-    x += len(tz) + 1
 
-    # Separator
-    _put(scr, bar_y, x, " | ", attr)
-    x += 3
-
-    # Transient message or key hints
+    msg = ""
     now = time.time()
     if store.message and (now - store.message_time) < MSG_DURATION:
-        _put(scr, bar_y, x, store.message[:mx - x - 1],
-             curses.color_pair(C_YELLOW) | curses.A_BOLD)
-    else:
-        # Delete pending warning
-        if store.delete_pending and (now - store.delete_pending) < 3.0:
-            _put(scr, bar_y, x, "Press d again to confirm delete",
-                 curses.color_pair(C_RED) | curses.A_BOLD)
-        else:
-            hints = "q:Quit j/k:Nav Space:Toggle e:Edit n:New d:Del R:Run s:Save u:Undo ?:Help"
-            _put(scr, bar_y, x, hints[:mx - x - 1], attr)
+        msg = store.message
+    elif store.delete_pending and (now - store.delete_pending) < 3.0:
+        msg = "Press d again to confirm delete"
+
+    left = f"{dirty_str} | {tz} | {msg}"
+    status_bar = left + " " * max(0, mx - len(left))
+    _put(scr, status_y, 0, status_bar[:mx], attr)
+
+    # -- Key hints row: build full-width string, write once --
+    hints = " q:Quit  j/k:Nav  Space:Toggle  e:Edit  n:New  d:Del  R:Run  s:Save  u:Undo  ?:Help"
+    hints_bar = hints + " " * max(0, mx - len(hints))
+    _put(scr, hints_y, 0, hints_bar[:mx], attr)

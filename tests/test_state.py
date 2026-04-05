@@ -1,6 +1,13 @@
 """Tests for state management: dispatch, undo/redo, dirty detection."""
 
 import unittest
+from unittest.mock import patch
+
+# Patch _load_log before any Store is created so tests don't read real history
+_patch_load = patch("lazycron.state._load_log", side_effect=lambda: [])
+_patch_persist = patch("lazycron.state._persist_entry")
+_patch_load.start()
+_patch_persist.start()
 
 from lazycron.crontab import parse
 from lazycron.state import Action, Store
@@ -56,7 +63,7 @@ class TestStore(unittest.TestCase):
         self.assertEqual(self.store.focused_panel, 2)
 
     def test_focus_wraps(self):
-        for _ in range(5):
+        for _ in range(3):
             self.store.dispatch(Action.FOCUS_NEXT)
         self.assertEqual(self.store.focused_panel, 0)
 

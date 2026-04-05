@@ -86,7 +86,6 @@ def draw_borders(scr, geo: PanelGeometry, focused: int = 0) -> None:
     """Draw the panel borders and titles on the main screen."""
     ba = curses.color_pair(C_BORDER)
     ta = curses.color_pair(C_TITLE) | curses.A_BOLD
-    fa = curses.color_pair(C_TITLE) | curses.A_BOLD | curses.A_REVERSE
 
     panel_titles = [
         " Jobs ", " Job Details ", " Log ",
@@ -97,8 +96,8 @@ def draw_borders(scr, geo: PanelGeometry, focused: int = 0) -> None:
 
     # -- Top border with jobs title
     title = panel_titles[0]
-    title_attr = fa if focused == 0 else ta
-    top_border_jobs = BOX_H * (geo.jobs_w - 2)
+    title_attr = ta
+    top_border_jobs = BOX_H * (geo.jobs_w - 1)
     _put(scr, 0, 1, top_border_jobs, ba)
     if len(title) < geo.jobs_w - 2:
         _put(scr, 0, 2, title, title_attr)
@@ -108,7 +107,7 @@ def draw_borders(scr, geo: PanelGeometry, focused: int = 0) -> None:
 
     # -- Top border with detail title
     title = panel_titles[1]
-    title_attr = fa if focused == 1 else ta
+    title_attr = ta
     top_border_detail = BOX_H * (geo.detail_w - 2)
     _put(scr, 0, geo.jobs_w + 1, top_border_detail, ba)
     if len(title) < geo.detail_w - 2:
@@ -135,7 +134,7 @@ def draw_borders(scr, geo: PanelGeometry, focused: int = 0) -> None:
 
     # -- Log panel title on the middle divider
     title = panel_titles[2]
-    title_attr = fa if focused == 2 else ta
+    title_attr = ta
     if len(title) < geo.log_w - 2:
         _put(scr, mid_y, 2, title, title_attr)
 
