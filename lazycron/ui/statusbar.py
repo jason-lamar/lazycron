@@ -19,31 +19,25 @@ def draw_statusbar(scr, store: Store) -> None:
     if mx < MIN_W:
         return
 
-    status_y = my - 2  # Status row (dirty, timezone, messages)
-    hints_y = my - 1   # Key hints row (always visible)
+    hints_y = my - 2   # Key hints row
+    status_y = my - 1  # Status row (dirty, messages) — bottom-most
     attr = curses.color_pair(C_STATUS)
 
-    # -- Status row: build full-width string, write once --
+    # -- Status row: only show when there's something actionable --
+    parts = []
     if store.dirty:
-        dirty_str = f" {IND_MODIFIED} modified"
-    else:
-        dirty_str = "  saved   "
+        parts.append(f"{IND_MODIFIED} unsaved changes")
 
-    try:
-        tz = time.tzname[0]
-    except (IndexError, AttributeError):
-        tz = "UTC"
-
-    msg = ""
     now = time.time()
     if store.message and (now - store.message_time) < MSG_DURATION:
-        msg = store.message
+        parts.append(store.message)
     elif store.delete_pending and (now - store.delete_pending) < 3.0:
-        msg = "Press d again to confirm delete"
+        parts.append("Press d again to confirm delete")
 
-    left = f"{dirty_str} | {tz} | {msg}"
-    status_bar = left + " " * max(0, mx - len(left))
-    _put(scr, status_y, 0, status_bar[:mx], attr)
+    if parts:
+        left = " " + " | ".join(parts)
+        status_bar = left + " " * max(0, mx - len(left))
+        _put(scr, status_y, 0, status_bar[:mx], attr)
 
     # -- Key hints row: build full-width string, write once --
     hints = " q:Quit  j/k:Nav  Space:Toggle  e:Edit  n:New  d:Del  R:Run  s:Save  u:Undo  ?:Help"

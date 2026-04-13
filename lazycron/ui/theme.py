@@ -41,7 +41,7 @@ def init_colors() -> None:
     curses.init_pair(C_HDR, curses.COLOR_WHITE, curses.COLOR_BLUE)
     curses.init_pair(C_WHITE, curses.COLOR_WHITE, -1)
     curses.init_pair(C_MAGENTA, curses.COLOR_MAGENTA, -1)
-    curses.init_pair(C_STATUS, curses.COLOR_BLACK, curses.COLOR_WHITE)
+    curses.init_pair(C_STATUS, curses.COLOR_CYAN, -1)
     curses.init_pair(C_ACTIVE, curses.COLOR_GREEN, -1)
     curses.init_pair(C_DISABLED, curses.COLOR_WHITE, -1)
     curses.init_pair(C_SELECTED, curses.COLOR_BLACK, curses.COLOR_CYAN)
