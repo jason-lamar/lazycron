@@ -29,7 +29,7 @@ LOG="$HOME/.lazycron/history.jsonl"
 mkdir -p "$(dirname "$LOG")"
 # Source user env if present (survives wrapper regeneration)
 [ -f "$HOME/.lazycron/env.sh" ] && . "$HOME/.lazycron/env.sh"
-/bin/sh -c "$CMD"
+bash -c "set -o pipefail; $CMD" </dev/null
 EXIT=$?
 TS=$(python3 -c "import time; print(time.time())" 2>/dev/null || date +%s)
 if [ $EXIT -eq 0 ]; then
