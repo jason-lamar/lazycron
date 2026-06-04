@@ -376,6 +376,8 @@ class _FormState:
         self.cmd_cursor = len(command)
         # Currently active form element (0-4 = cron fields, 5 = name, 6 = command)
         self.active = 0
+        # Preserve the last cron column when moving vertically through the form.
+        self.last_cron_active = 0
 
     @property
     def schedule(self) -> str:
@@ -466,10 +468,27 @@ class _FormState:
             self.cmd_cursor = min(len(self.command), self.cmd_cursor + 1)
 
     def next_field(self) -> None:
+        if self.active < 5:
+            self.last_cron_active = self.active
         self.active = (self.active + 1) % FORM_FIELDS
 
     def prev_field(self) -> None:
+        if self.active < 5:
+            self.last_cron_active = self.active
         self.active = (self.active - 1) % FORM_FIELDS
+
+    def move_vertical(self, direction: int) -> None:
+        """Move between the cron row, name field, and command field."""
+        if direction not in (-1, 1):
+            return
+
+        if self.active < 5:
+            self.last_cron_active = self.active
+            self.active = NAME_FIELD if direction > 0 else CMD_FIELD
+        elif self.active == NAME_FIELD:
+            self.active = CMD_FIELD if direction > 0 else self.last_cron_active
+        elif self.active == CMD_FIELD:
+            self.active = self.last_cron_active if direction > 0 else NAME_FIELD
 
 
 def _run_form(win, form: _FormState, title: str,
@@ -558,6 +577,7 @@ def _run_form(win, form: _FormState, title: str,
             _put(win, hint_y, 3,
                  "Enter/Space: pick  "
                  + BOX_V + " Tab: next  "
+                 + BOX_V + " Up/Down: move  "
                  + BOX_V + " Type: custom  "
                  + BOX_V + " Ctrl+S: apply  "
                  + BOX_V + " Esc: cancel",
@@ -566,6 +586,7 @@ def _run_form(win, form: _FormState, title: str,
             _put(win, hint_y, 3,
                  "Type value  "
                  + BOX_V + " Ctrl+V: paste  "
+                 + BOX_V + " Up/Down: move  "
                  + BOX_V + " Tab: next  "
                  + BOX_V + " Enter/Ctrl+S: apply  "
                  + BOX_V + " Esc: cancel",
@@ -666,21 +687,11 @@ def _run_form(win, form: _FormState, title: str,
                 form.active = 4
 
         elif key in (curses.KEY_UP, curses.KEY_DOWN):
-            if form.active < 5:
-                # Open picklist for cron field
-                fx = boxes_x + form.active * (box_w + FIELD_GAP)
-                pick = _show_picklist(win, form.active,
-                                      form.fields[form.active],
-                                      fields_y + 5, fx)
-                if pick == "__custom__":
-                    form.clear_field()
-                elif pick is not None:
-                    form.fields[form.active] = pick
-                    form.preset_idx[form.active] = _find_preset_index(
-                        pick, FIELD_PRESETS[FIELD_NAMES[form.active]])
+            form.move_vertical(1 if key == curses.KEY_DOWN else -1)
 
         elif key == curses.KEY_LEFT:
             if form.active < 5:
+                form.last_cron_active = form.active
                 form.prev_field()
                 if form.active >= NAME_FIELD:
                     form.active = 4
@@ -689,6 +700,7 @@ def _run_form(win, form: _FormState, title: str,
 
         elif key == curses.KEY_RIGHT:
             if form.active < 5:
+                form.last_cron_active = form.active
                 form.next_field()
                 if not show_command and form.active >= NAME_FIELD:
                     form.active = 0

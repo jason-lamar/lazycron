@@ -95,6 +95,8 @@ python -m lazycron  # Alternative
 | `?` | Help |
 | `q` | Quit |
 
+In the edit and new-job dialogs, `←`/`→` move across cron columns, `↑`/`↓` move between the schedule row, name, and command fields, and `Enter` or `Space` opens the cron preset picker.
+
 ## How It Works
 
 LazyCron reads your crontab via `crontab -l`, provides a visual interface for editing, and writes changes back via `crontab -`. All modifications are tracked with an undo stack. Changes are only applied to your system crontab when you explicitly save (`s`).

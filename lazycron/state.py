@@ -8,9 +8,8 @@ from __future__ import annotations
 
 import copy
 import json
-import os
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
 from typing import Any, Optional
@@ -209,16 +208,19 @@ class Store:
     def _do_save(self) -> None:
         from lazycron.crontab import save_system_crontab, update_job
         from lazycron.wrapper import wrap_command, is_wrapped
-        # Auto-wrap commands with the logging wrapper before saving
-        for job in self.crontab.jobs:
+        # Deep copy the crontab before wrapping so a failed write
+        # doesn't leave in-memory state with already-wrapped commands.
+        staged = copy.deepcopy(self.crontab)
+        for job in staged.jobs:
             if job.enabled and not is_wrapped(job.command):
                 wrapped = wrap_command(job.display_name, job.command)
-                update_job(self.crontab, job, job.schedule.raw, wrapped, job.comment)
-        err = save_system_crontab(self.crontab)
+                update_job(staged, job, job.schedule.raw, wrapped, job.comment)
+        err = save_system_crontab(staged)
         if err:
             self._log(f"Save FAILED: {err}")
             self._set_message(f"Save failed: {err}")
         else:
+            self.crontab = staged
             self.dirty = False
             self.original = copy.deepcopy(self.crontab)
             self._log("Crontab saved")
